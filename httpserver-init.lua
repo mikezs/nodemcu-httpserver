@@ -2,6 +2,12 @@
 -- Part of nodemcu-httpserver, launches the server.
 -- Author: Marcos Kirsch
 
+local conf = nil
+if file.exists("httpserver-conf.lc") then
+   conf = dofile("httpserver-conf.lc")
+else
+   conf = dofile("httpserver-conf.lua")
+end
 -- Function for starting the server.
 -- If you compiled the mdns module, then it will also register with mDNS.
 local startServer = function(ip)
@@ -17,15 +23,18 @@ local startServer = function(ip)
    conf = nil
 end
 
+local currentIP = nil
 if (wifi.getmode() == wifi.STATION) or (wifi.getmode() == wifi.STATIONAP) then
 
    -- Connect to the WiFi access point and start server once connected.
    -- If the server loses connectivity, server will restart.
-   wifi.eventmon.register(wifi.eventmon.STA_GOT_IP, function(args)
-      print("Connected to WiFi Access Point. Got IP: " .. args["IP"])
-      startServer(args["IP"])
-      wifi.eventmon.register(wifi.eventmon.STA_DISCONNECTED, function(args)
+   wifi.sta.on("got_ip", function(event, info)
+      print("Connected to WiFi Access Point. Got IP: " .. info["ip"])
+      startServer(info["ip"])
+	  currentIP = info["ip"]
+      wifi.sta.on("disconnected", function(event, info)
          print("Lost connectivity! Restarting...")
+		 currentIP = nil
          node.restart()
       end)
    end)
@@ -33,9 +42,8 @@ if (wifi.getmode() == wifi.STATION) or (wifi.getmode() == wifi.STATIONAP) then
    -- What if after a while (30 seconds) we didn't connect? Restart and keep trying.
    local watchdogTimer = tmr.create()
    watchdogTimer:register(30000, tmr.ALARM_SINGLE, function (watchdogTimer)
-      local ip = wifi.sta.getip()
-      if (not ip) then ip = wifi.ap.getip() end
-      if ip == nil then
+      if (not currentIP) then currentIP = wifi.ap.getip() end
+      if currentIP == nil then
          print("No IP after a while. Restarting...")
          node.restart()
       else
@@ -48,6 +56,6 @@ if (wifi.getmode() == wifi.STATION) or (wifi.getmode() == wifi.STATIONAP) then
 
 else
 
-   startServer(wifi.ap.getip())
+   startServer(conf.wifi.accessPoint.ip)
 
 end
